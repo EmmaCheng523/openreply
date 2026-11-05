@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import Redis from "ioredis";
+import { redisTlsOptions } from "@/lib/redis-tls";
 import { prisma } from "@/lib/db/client";
 import { ApiError } from "./http";
 
@@ -14,7 +15,7 @@ let connecting: Promise<unknown> | undefined;
 
 async function limiter() {
   if (!process.env.REDIS_URL) throw new ApiError("Integration rate limiter unavailable", 503);
-  redis ??= new Redis(process.env.REDIS_URL, { maxRetriesPerRequest: 1, enableOfflineQueue: false, lazyConnect: true,
+  redis ??= new Redis(process.env.REDIS_URL, { ...redisTlsOptions(), maxRetriesPerRequest: 1, enableOfflineQueue: false, lazyConnect: true,
     connectTimeout: 3000, retryStrategy: () => null });
   // Prevent connection errors from being logged with infrastructure details.
   if (!redis.listenerCount("error")) redis.on("error", () => undefined);
