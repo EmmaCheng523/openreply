@@ -10,6 +10,8 @@ import {
   verifyOAuthState,
 } from "@/lib/meta/oauth";
 import { canManageWorkspace } from "@/lib/workspace-access";
+import { usesUnifiedLogin } from "@/lib/meta/login-mode";
+import { getUnifiedAccount, tokenExpiry } from "@/lib/meta/unified-login";
 
 export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get("code");
@@ -43,13 +45,16 @@ export async function GET(request: NextRequest) {
 
   try {
     const redirectUri = `${baseUrl}/api/instagram/callback`;
-    const { accessToken: shortLivedToken } = await exchangeCodeForToken(
+    const exchanged = await exchangeCodeForToken(
       code,
       redirectUri
     );
-    const { accessToken: longLivedToken, expiresIn } =
-      await getLongLivedToken(shortLivedToken);
-    const userInfo = await getUserInfo(longLivedToken);
+    const unified = usesUnifiedLogin();
+    const { accessToken: longLivedToken, expiresIn } = unified
+      ? { accessToken: exchanged.accessToken, expiresIn: exchanged.expiresIn ?? 0 }
+      : await getLongLivedToken(exchanged.accessToken);
+    const sharedAccount = unified ? await getUnifiedAccount(longLivedToken) : null;
+    const userInfo = await getUserInfo(longLivedToken, sharedAccount?.id);
     // Webhooks and the messaging API key off the professional account ID
     // (user_id), not the app-scoped `id`. Store user_id so comment webhooks
     // can be matched back to this account. Fall back to id if user_id is
@@ -67,7 +72,7 @@ export async function GET(request: NextRequest) {
     }
 
     const encryptedToken = encryptToken(longLivedToken);
-    const tokenExpiresAt = new Date(Date.now() + expiresIn * 1000);
+    const tokenExpiresAt = tokenExpiry(expiresIn);
 
     let webhookSubscribed = false;
     try {
@@ -88,6 +93,8 @@ export async function GET(request: NextRequest) {
       name: userInfo.name,
       accessToken: encryptedToken,
       tokenExpiresAt,
+      metaClientBusinessId: sharedAccount?.clientBusinessId ?? null,
+      metaLoginConfigId: unified ? process.env.META_LOGIN_CONFIG_ID : null,
       webhookSubscribed,
     };
     const existing = await prisma.instagramAccount.findUnique({ where: { instagramId } });

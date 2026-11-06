@@ -151,6 +151,8 @@ model InstagramAccount {
   zernioAccountId   String?
   accessToken       String
   tokenExpiresAt    DateTime?
+  metaClientBusinessId String?
+  metaLoginConfigId String?
   webhookSubscribed Boolean  @default(false)
   connectedAt       DateTime @default(now())
   updatedAt         DateTime @updatedAt

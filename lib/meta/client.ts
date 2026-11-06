@@ -1,6 +1,8 @@
 import { getMetaGraphApiVersion, requireEnv } from "@/lib/env";
+import { usesUnifiedLogin } from "./login-mode";
 
 function instagramGraphBase() {
+  if (usesUnifiedLogin()) return facebookGraphBase();
   return `https://graph.instagram.com/${getMetaGraphApiVersion()}`;
 }
 
@@ -664,11 +666,12 @@ export async function getConversationMessages(
   return data.messages?.data ?? [];
 }
 
-export async function getUserInfo(accessToken: string): Promise<InstagramUser> {
-  const url = new URL(`${instagramGraphBase()}/me`);
+export async function getUserInfo(accessToken: string, instagramAccountId?: string): Promise<InstagramUser> {
+  if (usesUnifiedLogin() && !instagramAccountId) throw new Error("Unified Login requires an Instagram account ID");
+  const url = new URL(`${instagramGraphBase()}/${usesUnifiedLogin() ? instagramAccountId : "me"}`);
   url.searchParams.set(
     "fields",
-    "id,user_id,username,name,profile_picture_url,followers_count"
+    usesUnifiedLogin() ? "id,username,name,profile_picture_url,followers_count" : "id,user_id,username,name,profile_picture_url,followers_count"
   );
   url.searchParams.set("access_token", accessToken);
 
@@ -684,9 +687,11 @@ const MEDIA_PAGE_SIZE = 100;
 
 export async function getUserMedia(
   accessToken: string,
-  limit = 25
+  limit = 25,
+  instagramAccountId?: string
 ): Promise<InstagramMedia[]> {
-  const url = new URL(`${instagramGraphBase()}/me/media`);
+  if (usesUnifiedLogin() && !instagramAccountId) throw new Error("Unified Login requires an Instagram account ID");
+  const url = new URL(`${instagramGraphBase()}/${usesUnifiedLogin() ? instagramAccountId : "me"}/media`);
   url.searchParams.set("fields", MEDIA_FIELDS);
   url.searchParams.set("limit", limit.toString());
   url.searchParams.set("access_token", accessToken);
@@ -704,11 +709,13 @@ export async function getUserMedia(
  */
 export async function getAllUserMedia(
   accessToken: string,
-  max = 500
+  max = 500,
+  instagramAccountId?: string
 ): Promise<InstagramMedia[]> {
   const results: InstagramMedia[] = [];
 
-  const first = new URL(`${instagramGraphBase()}/me/media`);
+  if (usesUnifiedLogin() && !instagramAccountId) throw new Error("Unified Login requires an Instagram account ID");
+  const first = new URL(`${instagramGraphBase()}/${usesUnifiedLogin() ? instagramAccountId : "me"}/media`);
   first.searchParams.set("fields", MEDIA_FIELDS);
   first.searchParams.set("limit", String(Math.min(MEDIA_PAGE_SIZE, max)));
   first.searchParams.set("access_token", accessToken);
@@ -830,6 +837,7 @@ export async function getFollowerCountSeries(
 export async function getLongLivedToken(
   shortLivedToken: string
 ): Promise<{ accessToken: string; expiresIn: number }> {
+  if (usesUnifiedLogin()) throw new Error("Unified Login system tokens must not use Instagram token exchange");
   const url = new URL(`${instagramGraphBase()}/access_token`);
   url.searchParams.set("grant_type", "ig_exchange_token");
   url.searchParams.set("client_secret", requireEnv("INSTAGRAM_APP_SECRET"));
@@ -847,6 +855,7 @@ export async function getLongLivedToken(
 export async function refreshLongLivedToken(
   longLivedToken: string
 ): Promise<{ accessToken: string; expiresIn: number }> {
+  if (usesUnifiedLogin()) throw new Error("Reconnect expiring Unified Login system tokens; Instagram refresh is unsupported");
   const url = new URL(`${instagramGraphBase()}/refresh_access_token`);
   url.searchParams.set("grant_type", "ig_refresh_token");
   url.searchParams.set("access_token", longLivedToken);

@@ -5,7 +5,8 @@ import {
   randomBytes,
   timingSafeEqual,
 } from "crypto";
-import { getEncryptionKeyHex, requireEnv } from "@/lib/env";
+import { getEncryptionKeyHex, getMetaGraphApiVersion, requireEnv } from "@/lib/env";
+import { usesUnifiedLogin } from "./login-mode";
 
 // Instagram API with Instagram Login authorizes on www.instagram.com. The old
 // api.instagram.com/oauth/authorize host belonged to the retired Basic Display
@@ -88,6 +89,18 @@ export function verifyOAuthState(state: string | null): OAuthStatePayload | null
 }
 
 export function getAuthorizationUrl(redirectUri: string, state: string): string {
+  if (usesUnifiedLogin()) {
+    const params = new URLSearchParams({
+      client_id: requireEnv("FACEBOOK_APP_ID"),
+      config_id: requireEnv("META_LOGIN_CONFIG_ID"),
+      redirect_uri: redirectUri,
+      response_type: "code",
+      override_default_response_type: "true",
+      prompt: "login",
+      state,
+    });
+    return `https://www.facebook.com/dialog/oauth?${params}`;
+  }
   const params = new URLSearchParams({
     client_id: requireEnv("INSTAGRAM_APP_ID"),
     redirect_uri: redirectUri,
@@ -103,7 +116,26 @@ export function getAuthorizationUrl(redirectUri: string, state: string): string 
 export async function exchangeCodeForToken(
   code: string,
   redirectUri: string
-): Promise<{ accessToken: string; userId: string }> {
+): Promise<{ accessToken: string; userId: string; expiresIn?: number }> {
+  if (usesUnifiedLogin()) {
+    const url = new URL(`https://graph.facebook.com/${getMetaGraphApiVersion()}/oauth/access_token`);
+    url.searchParams.set("client_id", requireEnv("FACEBOOK_APP_ID"));
+    url.searchParams.set("client_secret", requireEnv("FACEBOOK_APP_SECRET"));
+    url.searchParams.set("redirect_uri", redirectUri);
+    url.searchParams.set("code", code);
+    const response = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(15_000) })
+      .catch(() => { throw new Error("Unified Login token exchange could not reach Meta"); });
+    const data = await response.json()
+      .catch(() => { throw new Error("Unified Login token exchange returned an invalid response"); });
+    if (!response.ok || data.error || typeof data.access_token !== "string" || !data.access_token) {
+      // Do not persist upstream payloads, codes, URLs or token-bearing errors.
+      throw new Error(`Unified Login token exchange failed (HTTP ${response.status})`);
+    }
+    if (data.expires_in != null && (!Number.isFinite(data.expires_in) || data.expires_in < 0)) {
+      throw new Error("Unified Login returned an invalid token expiry");
+    }
+    return { accessToken: data.access_token, userId: "", expiresIn: data.expires_in ?? 0 };
+  }
   const body = new URLSearchParams({
     client_id: requireEnv("INSTAGRAM_APP_ID"),
     client_secret: requireEnv("INSTAGRAM_APP_SECRET"),

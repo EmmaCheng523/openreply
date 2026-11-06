@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { usesUnifiedLogin } from "@/lib/meta/login-mode";
 
 const HEX_32_BYTE = /^[a-f0-9]{64}$/i;
 
@@ -37,7 +38,10 @@ const INSTAGRAM_OAUTH_ENV = [
 ] as const;
 
 export function getMissingInstagramOAuthEnv(): string[] {
-  return INSTAGRAM_OAUTH_ENV.filter((name) => {
+  const required = usesUnifiedLogin()
+    ? ["FACEBOOK_APP_ID", "FACEBOOK_APP_SECRET", "META_LOGIN_CONFIG_ID", "META_INSTAGRAM_USERNAME", "ENCRYPTION_KEY", "NEXTAUTH_SECRET"]
+    : INSTAGRAM_OAUTH_ENV;
+  return required.filter((name) => {
     const value = process.env[name];
     if (!value) return true;
     // A malformed key fails later inside encryptToken, after the user has
