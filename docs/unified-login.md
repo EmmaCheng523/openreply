@@ -8,6 +8,8 @@ Set the same `META_LOGIN_MODE=unified` and `META_GRAPH_API_VERSION=v27.0` on web
 
 Register `/api/instagram/callback` on the public web origin. Request only `instagram_basic`, `instagram_manage_messages` and `instagram_manage_comments` for comment-to-DM. Insights need the optional `instagram_manage_insights` permission. Advertising and publishing permissions are unnecessary for this workflow.
 
+If Meta's Connected Apps UI confirms the intended Instagram asset but the assigned-account edge returns no matching account, optionally pin its verified numeric ID as `META_INSTAGRAM_ID`. The callback must then read that exact profile using the granted token and verify both the returned ID and expected username before saving. The configured ID alone never establishes access. No token is logged by the asset diagnostic.
+
 Run `npm run db:generate` and `npm run db:migrate`. Client business ID and config ID are stored with the encrypted token. A zero/omitted token expiry is stored as null and is not sent to the legacy Instagram refresh endpoint. Revoked tokens must be reconnected. Expiring system tokens require reconnecting before expiry; automated system-token rotation is not implemented.
 
 Login mode is deployment-wide: do not mix old Instagram Login tokens with Unified Login tokens. Reconnect all Meta accounts when changing modes. Legacy deployments retain their original behavior when `META_LOGIN_MODE` is unset. The account ID is explicitly passed for profile/media requests because `/me` identifies the system user in unified mode.

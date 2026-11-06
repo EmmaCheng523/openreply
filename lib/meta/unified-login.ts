@@ -41,6 +41,19 @@ export async function getUnifiedAccount(accessToken: string) {
     seen.add(cursor);
     after = cursor;
   }
+  // A self-hosted installation can pin an account independently verified in
+  // Meta's Connected Apps UI. Still require this token to read that exact IG
+  // profile and require its ID and username to match; never infer ownership
+  // from the configured ID alone when Meta's assigned-assets edge is empty.
+  const configuredId = process.env.META_INSTAGRAM_ID?.trim();
+  if (configuredId) {
+    if (!/^\d+$/.test(configuredId)) throw new Error("Invalid configured Instagram account ID");
+    const profile = await graph<{ id?: string; username?: string }>(configuredId, accessToken, "id,username");
+    if (profile.id !== configuredId || typeof profile.username !== "string" || profile.username.trim().replace(/^@/, "").toLowerCase() !== target) {
+      throw new Error("The configured Instagram ID and username do not match the authorized profile");
+    }
+    return { id: configuredId, username: profile.username, clientBusinessId: business.client_business_id };
+  }
   throw new Error(`The configured Instagram account was not shared (accounts=${sharedCount}, missing usernames=${unnamedCount}). Check the selected business asset and app role.`);
 }
 

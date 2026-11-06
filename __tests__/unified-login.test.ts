@@ -12,6 +12,7 @@ beforeEach(() => {
   vi.stubEnv("FACEBOOK_APP_SECRET", "server-secret");
   vi.stubEnv("META_LOGIN_CONFIG_ID", "456");
   vi.stubEnv("META_INSTAGRAM_USERNAME", "@intended_account");
+  vi.stubEnv("META_INSTAGRAM_ID", "");
   vi.stubEnv("META_GRAPH_API_VERSION", "v27.0");
 });
 afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
@@ -66,6 +67,24 @@ describe("Unified Login", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(response({ client_business_id: "business" }))
       .mockResolvedValueOnce(response({ data: [{ id: "1", username: "other" }] })));
     await expect(getUnifiedAccount("token")).rejects.toThrow("configured Instagram account was not shared");
+  });
+
+  it("verifies a pinned account with the token when Meta returns no assigned accounts", async () => {
+    vi.stubEnv("META_INSTAGRAM_ID", "2");
+    const fetch = vi.fn().mockResolvedValueOnce(response({ client_business_id: "business" }))
+      .mockResolvedValueOnce(response({ data: [] }))
+      .mockResolvedValueOnce(response({ id: "2", username: "intended_account" }));
+    vi.stubGlobal("fetch", fetch);
+    expect(await getUnifiedAccount("token")).toMatchObject({ id: "2", username: "intended_account" });
+    expect(new URL(String(fetch.mock.calls[2][0])).pathname).toBe("/v27.0/2");
+  });
+
+  it("rejects a pinned ID when the authorized profile has a different username", async () => {
+    vi.stubEnv("META_INSTAGRAM_ID", "2");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(response({ client_business_id: "business" }))
+      .mockResolvedValueOnce(response({ data: [] }))
+      .mockResolvedValueOnce(response({ id: "2", username: "other" })));
+    await expect(getUnifiedAccount("token")).rejects.toThrow("do not match");
   });
 
   it("uses explicit IG IDs for profiles/media and Facebook Graph for private replies", async () => {
