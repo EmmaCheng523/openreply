@@ -16,17 +16,21 @@ async function graph<T>(path: string, accessToken: string, fields: string, after
 }
 
 export async function getUnifiedAccount(accessToken: string) {
-  const target = requireEnv("META_INSTAGRAM_USERNAME").replace(/^@/, "").toLowerCase();
+  const target = requireEnv("META_INSTAGRAM_USERNAME").trim().replace(/^@/, "").toLowerCase();
   const business = await graph<{ client_business_id?: string }>("me", accessToken, "client_business_id");
   if (!business.client_business_id) throw new Error("Unified Login did not share a client business ID");
   const seen = new Set<string>();
+  let sharedCount = 0;
+  let unnamedCount = 0;
   let after: string | undefined;
   for (let page = 0; page < 100; page++) {
     const result = await graph<{
       data?: { id: string; username: string }[];
       paging?: { next?: string; cursors?: { after?: string } };
     }>("me/assigned_instagram_accounts", accessToken, "id,username", after);
-    const account = result.data?.find((row) => row.username?.toLowerCase() === target);
+    sharedCount += result.data?.length ?? 0;
+    unnamedCount += result.data?.filter((row) => !row.username).length ?? 0;
+    const account = result.data?.find((row) => row.username?.trim().replace(/^@/, "").toLowerCase() === target);
     if (account) {
       if (!/^\d+$/.test(account.id)) throw new Error("Unified Login returned an invalid Instagram account ID");
       return { ...account, clientBusinessId: business.client_business_id };
@@ -37,7 +41,7 @@ export async function getUnifiedAccount(accessToken: string) {
     seen.add(cursor);
     after = cursor;
   }
-  throw new Error("The configured Instagram account was not shared. Reconnect and select the intended account.");
+  throw new Error(`The configured Instagram account was not shared (accounts=${sharedCount}, missing usernames=${unnamedCount}). Check the selected business asset and app role.`);
 }
 
 export function tokenExpiry(expiresIn: number): Date | null {
